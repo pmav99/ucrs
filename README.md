@@ -5,10 +5,12 @@ Working with geospatial data in Python often means juggling multiple libraries, 
 - **cartopy** uses `cartopy.crs.CRS` and `cartopy.crs.Projection`
 - **GDAL/osgeo** uses `osgeo.osr.SpatialReference`
 
-Converting between these formats is tedious and error-prone.
+Converting between these formats is well
+[documented](https://pyproj4.github.io/pyproj/stable/crs_compatibility.html),
+but a bit tedious.
 
 UCRS solves this by providing a single wrapper class that accepts any CRS input
-and lazily converts to any output format you need.
+and lazily converts to an instance of any library you need.
 
 ## Usage
 
@@ -23,17 +25,17 @@ ucrs = UCRS(cartopy.crs.PlateCarree())    # cartopy CRS
 ucrs = UCRS(srs)                          # osgeo.osr.SpatialReference
 
 # Access different representations
-proj_crs = ucrs.proj        # Always available
-cart_crs = ucrs.cartopy     # Requires cartopy
-osgeo_crs = ucrs.osgeo      # Requires GDAL
+ucrs.proj        # Always available
+ucrs.cartopy     # Requires cartopy
+ucrs.osgeo       # Requires GDAL
 ```
 
 ## How It Works
 
 UCRS uses `pyproj.CRS` as its internal canonical representation. All conversions follow this pattern:
 
-1. **Input** ’ `pyproj.CRS` (during initialization)
-2. `pyproj.CRS` ’ **Output format** (via cached properties)
+1. **Input** â†’ `pyproj.CRS` (during initialization)
+2. `pyproj.CRS` â†’ **Output format** (via cached properties)
 
 Conversions are lazy and cached, so accessing `.proj`, `.cartopy`, or `.osgeo` multiple times returns the same object without re-conversion.
 
