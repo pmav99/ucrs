@@ -32,7 +32,7 @@ requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-include = ["py.typed"]
+packages = [{include = "ucrs"}]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
@@ -74,5 +74,5 @@ exclude_lines = [
 ]
 
 [tool.coverage.paths]
-source = ["ucrs.py"]
+source = ["ucrs/"]
 
