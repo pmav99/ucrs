@@ -11,6 +11,15 @@ from typing import TYPE_CHECKING
 import pyproj
 
 try:
+    from importlib.metadata import version, PackageNotFoundError
+    try:
+        __version__ = version("ucrs")
+    except PackageNotFoundError:
+        __version__ = "unknown"
+except ImportError:
+    __version__ = "unknown"
+
+try:
     import cartopy.crs as ccrs
     CARTOPY_AVAILABLE = True
 except ImportError:
