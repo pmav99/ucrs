@@ -41,7 +41,7 @@ Conversions are lazy and cached, so accessing `.proj`, `.cartopy`, or `.osgeo` m
 
 ## Requirements
 
-- Python 3.13+
+- Python 3.10+
 - pyproj (required)
 - cartopy (optional)
 - GDAL (optional)

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from functools import cached_property
 from typing import cast
+from typing import TypeAlias
 from typing import TYPE_CHECKING
 
 import pyproj
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
     import cartopy.crs as ccrs
     from osgeo.osr import SpatialReference
 
-    type CRSInput = (
+    CRSInput: TypeAlias = (
         pyproj.CRS
         | ccrs.CRS
         | ccrs.Projection
