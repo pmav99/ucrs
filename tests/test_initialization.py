@@ -8,13 +8,11 @@ import pytest
 import pyproj
 
 from ucrs import UCRS
-from tests.conftest import requires_cartopy, requires_osgeo, CARTOPY_AVAILABLE, OSGEO_AVAILABLE
+from tests.conftest import requires_cartopy, requires_osgeo
 
 if TYPE_CHECKING:
-    if CARTOPY_AVAILABLE:
-        import cartopy.crs as ccrs
-    if OSGEO_AVAILABLE:
-        from osgeo.osr import SpatialReference
+    import cartopy.crs as ccrs
+    from osgeo.osr import SpatialReference
 
 
 class TestInitializationFromInt:
@@ -23,27 +21,32 @@ class TestInitializationFromInt:
     def test_from_epsg_int_geographic(self, epsg_4326: int) -> None:
         """Test initialization from EPSG integer (geographic CRS)."""
         ucrs = UCRS(epsg_4326)
-        assert isinstance(ucrs.proj, pyproj.CRS)
-        assert ucrs.proj.to_epsg() == 4326
-        assert ucrs.proj.is_geographic
+        assert isinstance(ucrs, pyproj.CRS)
+        assert ucrs.to_epsg() == 4326
+        assert ucrs.is_geographic
 
     def test_from_epsg_int_projected(self, epsg_3857: int) -> None:
         """Test initialization from EPSG integer (projected CRS)."""
         ucrs = UCRS(epsg_3857)
-        assert isinstance(ucrs.proj, pyproj.CRS)
-        assert ucrs.proj.to_epsg() == 3857
-        assert ucrs.proj.is_projected
+        assert isinstance(ucrs, pyproj.CRS)
+        assert ucrs.to_epsg() == 3857
+        assert ucrs.is_projected
 
-    @pytest.mark.parametrize("epsg_code", [
-        4326,  # WGS84
-        3857,  # Web Mercator
-        32633,  # UTM Zone 33N
-        2154,  # Lambert-93 (France)
+    @pytest.mark.parametrize("epsg_code,expected_type", [
+        (4326, "geographic"),  # WGS84
+        (3857, "projected"),   # Web Mercator
+        (32633, "projected"),  # UTM Zone 33N
+        (2154, "projected"),   # Lambert-93 (France)
     ])
-    def test_from_various_epsg_codes(self, epsg_code: int) -> None:
+    def test_from_various_epsg_codes(self, epsg_code: int, expected_type: str) -> None:
         """Test initialization from various EPSG codes."""
         ucrs = UCRS(epsg_code)
-        assert ucrs.proj.to_epsg() == epsg_code
+        assert ucrs.to_epsg() == epsg_code
+
+        if expected_type == "geographic":
+            assert ucrs.is_geographic
+        else:
+            assert ucrs.is_projected
 
 
 class TestInitializationFromString:
@@ -52,12 +55,12 @@ class TestInitializationFromString:
     def test_from_epsg_string(self, epsg_string: str) -> None:
         """Test initialization from EPSG string format."""
         ucrs = UCRS(epsg_string)
-        assert ucrs.proj.to_epsg() == 4326
+        assert ucrs.to_epsg() == 4326
 
     def test_from_wkt_string(self, wgs84_wkt: str) -> None:
         """Test initialization from WKT string."""
         ucrs = UCRS(wgs84_wkt)
-        assert ucrs.proj.to_epsg() == 4326
+        assert ucrs.to_epsg() == 4326
 
     @pytest.mark.parametrize("epsg_format", [
         "EPSG:4326",
@@ -68,7 +71,14 @@ class TestInitializationFromString:
         """Test various EPSG string format variations."""
         ucrs = UCRS(epsg_format)
         expected_code = int(epsg_format.split(":")[1])
-        assert ucrs.proj.to_epsg() == expected_code
+        assert ucrs.to_epsg() == expected_code
+
+    def test_from_proj_string(self) -> None:
+        """Test initialization from PROJ string."""
+        proj_str = "+proj=longlat +datum=WGS84 +no_defs"
+        ucrs = UCRS(proj_str)
+        assert isinstance(ucrs, pyproj.CRS)
+        assert ucrs.is_geographic
 
 
 class TestInitializationFromPyproj:
@@ -77,14 +87,21 @@ class TestInitializationFromPyproj:
     def test_from_pyproj_crs(self, wgs84_pyproj: pyproj.CRS) -> None:
         """Test initialization from pyproj.CRS object."""
         ucrs = UCRS(wgs84_pyproj)
-        assert ucrs.proj is wgs84_pyproj  # Should be same object
-        assert ucrs.proj.to_epsg() == 4326
+        # Should store the same object
+        assert ucrs._pyproj_crs is wgs84_pyproj
+        assert ucrs.to_epsg() == 4326
 
     def test_from_pyproj_crs_projected(self, web_mercator_pyproj: pyproj.CRS) -> None:
         """Test initialization from pyproj.CRS (projected)."""
         ucrs = UCRS(web_mercator_pyproj)
-        assert ucrs.proj is web_mercator_pyproj
-        assert ucrs.proj.to_epsg() == 3857
+        assert ucrs._pyproj_crs is web_mercator_pyproj
+        assert ucrs.to_epsg() == 3857
+
+    def test_pyproj_input_not_copied(self, wgs84_pyproj: pyproj.CRS) -> None:
+        """Test that pyproj.CRS input is not copied (efficiency)."""
+        ucrs = UCRS(wgs84_pyproj)
+        # Internal CRS should be the same object (not copied)
+        assert ucrs._pyproj_crs is wgs84_pyproj
 
 
 class TestInitializationFromDict:
@@ -93,9 +110,23 @@ class TestInitializationFromDict:
     def test_from_proj_dict(self, proj_dict: dict[str, str]) -> None:
         """Test initialization from PROJ dictionary."""
         ucrs = UCRS(proj_dict)
-        assert isinstance(ucrs.proj, pyproj.CRS)
-        assert ucrs.proj.is_geographic
-        # Note: PROJ dict might not have exact EPSG match
+        assert isinstance(ucrs, pyproj.CRS)
+        assert ucrs.is_geographic
+
+    def test_from_proj_dict_custom(self) -> None:
+        """Test initialization from custom PROJ dictionary."""
+        proj_dict = {
+            "proj": "tmerc",
+            "lat_0": "0",
+            "lon_0": "15",
+            "k": "0.9996",
+            "x_0": "500000",
+            "y_0": "0",
+            "datum": "WGS84",
+        }
+        ucrs = UCRS(proj_dict)
+        assert isinstance(ucrs, pyproj.CRS)
+        assert ucrs.is_projected
 
 
 @requires_cartopy
@@ -105,14 +136,14 @@ class TestInitializationFromCartopy:
     def test_from_cartopy_crs(self, wgs84_cartopy: ccrs.CRS) -> None:
         """Test initialization from cartopy.crs.CRS."""
         ucrs = UCRS(wgs84_cartopy)
-        assert isinstance(ucrs.proj, pyproj.CRS)
-        assert ucrs.proj.is_geographic
+        assert isinstance(ucrs, pyproj.CRS)
+        assert ucrs.is_geographic
 
     def test_from_cartopy_projection(self, web_mercator_cartopy: ccrs.Projection) -> None:
         """Test initialization from cartopy.crs.Projection."""
         ucrs = UCRS(web_mercator_cartopy)
-        assert isinstance(ucrs.proj, pyproj.CRS)
-        assert ucrs.proj.is_projected
+        assert isinstance(ucrs, pyproj.CRS)
+        assert ucrs.is_projected
 
     @pytest.mark.parametrize("cartopy_crs_class", [
         pytest.param(lambda: __import__("cartopy.crs", fromlist=["PlateCarree"]).PlateCarree(), id="PlateCarree"),
@@ -123,7 +154,7 @@ class TestInitializationFromCartopy:
         """Test initialization from various cartopy projections."""
         crs = cartopy_crs_class()
         ucrs = UCRS(crs)
-        assert isinstance(ucrs.proj, pyproj.CRS)
+        assert isinstance(ucrs, pyproj.CRS)
 
 
 @requires_osgeo
@@ -133,30 +164,43 @@ class TestInitializationFromOsgeo:
     def test_from_osgeo_spatial_reference(self, wgs84_osgeo: SpatialReference) -> None:
         """Test initialization from osgeo.osr.SpatialReference."""
         ucrs = UCRS(wgs84_osgeo)
-        assert isinstance(ucrs.proj, pyproj.CRS)
-        assert ucrs.proj.to_epsg() == 4326
+        assert isinstance(ucrs, pyproj.CRS)
+        assert ucrs.to_epsg() == 4326
 
     def test_from_osgeo_projected(self, web_mercator_osgeo: SpatialReference) -> None:
         """Test initialization from osgeo.osr.SpatialReference (projected)."""
         ucrs = UCRS(web_mercator_osgeo)
-        assert isinstance(ucrs.proj, pyproj.CRS)
-        assert ucrs.proj.to_epsg() == 3857
+        assert isinstance(ucrs, pyproj.CRS)
+        assert ucrs.to_epsg() == 3857
+
+    def test_osgeo_via_wkt_conversion(self, wgs84_osgeo: SpatialReference) -> None:
+        """Test that osgeo input is converted via WKT."""
+        ucrs = UCRS(wgs84_osgeo)
+        # Should have been converted via WKT
+        assert isinstance(ucrs._pyproj_crs, pyproj.CRS)
+        assert ucrs.to_epsg() == 4326
 
 
-class TestOriginalPreservation:
-    """Test that original input is preserved."""
+class TestInternalState:
+    """Test internal state management of UCRS."""
 
-    def test_original_preserved_int(self, epsg_4326: int) -> None:
-        """Test that original input is stored."""
+    def test_pyproj_crs_is_set(self, epsg_4326: int) -> None:
+        """Test that _pyproj_crs is properly set."""
         ucrs = UCRS(epsg_4326)
-        assert ucrs._original == epsg_4326
+        assert hasattr(ucrs, '_pyproj_crs')
+        assert isinstance(ucrs._pyproj_crs, pyproj.CRS)
 
-    def test_original_preserved_string(self, epsg_string: str) -> None:
-        """Test that original string input is stored."""
-        ucrs = UCRS(epsg_string)
-        assert ucrs._original == epsg_string
+    @requires_cartopy
+    def test_cartopy_projection_creates_valid_ucrs(self) -> None:
+        """Test that cartopy Projection input creates valid UCRS."""
+        import cartopy.crs as ccrs
+        proj = ccrs.Mercator()
+        ucrs = UCRS(proj)
+        assert isinstance(ucrs, pyproj.CRS)
+        assert isinstance(ucrs._pyproj_crs, pyproj.CRS)
 
-    def test_original_preserved_pyproj(self, wgs84_pyproj: pyproj.CRS) -> None:
-        """Test that original pyproj.CRS is stored."""
-        ucrs = UCRS(wgs84_pyproj)
-        assert ucrs._original is wgs84_pyproj
+    def test_inheritance_from_custom_constructor_crs(self, epsg_4326: int) -> None:
+        """Test that UCRS inherits from CustomConstructorCRS."""
+        ucrs = UCRS(epsg_4326)
+        assert isinstance(ucrs, pyproj.crs.CustomConstructorCRS)
+        assert isinstance(ucrs, pyproj.CRS)
