@@ -14,7 +14,7 @@ dependencies = [
 [project.optional-dependencies]
 cartopy = ["cartopy"]
 gdal = ["gdal"]
-full = ["cartopy", "gdal"]
+complete = ["cartopy", "gdal"]
 test = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",

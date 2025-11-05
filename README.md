@@ -123,7 +123,7 @@ pip install ucrs[cartopy]
 pip install ucrs[gdal]
 
 # With all optional dependencies
-pip install ucrs[full]
+pip install ucrs[complete]
 ```
 
 

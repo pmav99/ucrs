@@ -166,7 +166,7 @@ Custom pytest markers:
 pip install -e ".[test]"
 
 # Install with optional CRS libraries
-pip install -e ".[test,full]"
+pip install -e ".[test,complete]"
 
 # Install development dependencies
 pip install -e ".[dev]"
@@ -193,7 +193,7 @@ The test suite is designed to work in CI environments with different dependency 
 1. **Minimal**: Only pyproj (core functionality)
 2. **Cartopy**: With cartopy but without GDAL
 3. **GDAL**: With GDAL but without cartopy
-4. **Full**: All optional dependencies
+4. **Complete**: All optional dependencies
 
 Example CI matrix:
 ```yaml
