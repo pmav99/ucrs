@@ -21,6 +21,9 @@ Basic Usage
 >>> # Create from EPSG code
 >>> crs = UCRS(4326)
 >>>
+>>> # Create from WKT file
+>>> crs = UCRS.from_file("path/to/crs.wkt")
+>>>
 >>> # Access different representations
 >>> proj_crs = crs  # UCRS inherits from pyproj.CRS
 >>> cart_crs = crs.cartopy  # cartopy.crs.CRS (if cartopy installed)
@@ -53,6 +56,8 @@ ImportError messages when attempting to use unavailable conversions.
 from __future__ import annotations
 
 from functools import cached_property
+from os import PathLike
+from pathlib import Path
 from typing import cast
 from typing import TypeAlias
 from typing import TYPE_CHECKING
@@ -189,11 +194,6 @@ class UCRS(pyproj.crs.CustomConstructorCRS):
             - **osgeo.osr.SpatialReference**: Converted via WKT (if osgeo available)
             - **dict**: Dictionary representation of CRS
 
-        Raises
-        ------
-        pyproj.exceptions.CRSError
-            If the input cannot be interpreted as a valid CRS.
-
         Notes
         -----
         - GDAL version is automatically detected for proper WKT version handling
@@ -257,6 +257,47 @@ class UCRS(pyproj.crs.CustomConstructorCRS):
         # Initialize parent CustomConstructorCRS with the pyproj CRS
         super().__init__(self._pyproj_crs.to_json_dict())
 
+    @classmethod
+    def from_file(cls, filepath: str | PathLike[str]) -> UCRS:
+        """Create UCRS instance from a file containing WKT CRS definition.
+
+        Reads a text file containing a WKT (Well-Known Text) representation of a
+        Coordinate Reference System and creates a UCRS instance from it.
+
+        Parameters
+        ----------
+        filepath : str or os.PathLike[str]
+            Path to the file containing WKT CRS definition. Can be a string path,
+            a pathlib.Path object, or any path-like object.
+
+        Returns
+        -------
+        UCRS
+            A new UCRS instance created from the WKT in the file.
+
+        Notes
+        -----
+        - The file is expected to contain plain text WKT in UTF-8 encoding
+        - Whitespace (leading/trailing) is automatically stripped
+        - The WKT validation is performed by pyproj.CRS
+
+        Examples
+        --------
+        >>> # Create from file path string
+        >>> crs = UCRS.from_file("/path/to/crs.wkt")
+
+        >>> # Create from pathlib.Path
+        >>> from pathlib import Path
+        >>> crs = UCRS.from_file(Path("crs.wkt"))
+
+        >>> # The resulting UCRS can be used like any other
+        >>> crs.is_geographic
+        True
+        """
+        path = Path(filepath)
+        wkt_content = path.read_text(encoding="utf-8").strip()
+        return cls(wkt_content)
+
     @cached_property
     def cartopy(self) -> CartopyCRS | CartopyProjection:
         """Convert to cartopy CRS representation (lazy, cached).
@@ -265,13 +306,6 @@ class UCRS(pyproj.crs.CustomConstructorCRS):
         -------
         cartopy.crs.CRS or cartopy.crs.Projection
             Returns Projection for projected CRS, CRS for geographic CRS.
-
-        Raises
-        ------
-        ImportError
-            If cartopy is not installed.
-        RuntimeError
-            If the CRS cannot be represented in cartopy (e.g., missing area of use).
 
         Notes
         -----
@@ -321,11 +355,6 @@ class UCRS(pyproj.crs.CustomConstructorCRS):
         osgeo.osr.SpatialReference
             The osgeo SpatialReference object.
 
-        Raises
-        ------
-        ImportError
-            If osgeo/GDAL is not installed.
-
         Notes
         -----
         Uses WKT2_2018 for GDAL 3+ and WKT1_GDAL for older versions
@@ -360,3 +389,18 @@ class UCRS(pyproj.crs.CustomConstructorCRS):
 
         osr_crs.ImportFromWkt(wkt)
         return osr_crs
+
+    def summary(self) -> str:
+        attributes = [
+           'is_bound',
+           'is_compound',
+           'is_deprecated',
+           'is_derived',
+           'is_engineering',
+           'is_geocentric',
+           'is_geographic',
+           'is_projected',
+           'is_vertical',
+        ]
+        data = {attr: getattr(self, attr) for attr in attributes}
+        print(data)

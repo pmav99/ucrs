@@ -15,7 +15,7 @@ Converting between these is [well-documented](https://pyproj4.github.io/pyproj/s
 
 ## Features
 
-- **Universal Input**: Accepts EPSG codes, WKT, PROJ strings, or library-specific CRS objects
+- **Universal Input**: Accepts EPSG codes, WKT, PROJ strings, WKT files, or library-specific CRS objects
 - **Lazy Conversion**: Only imports and converts when you access a specific property
 - **Cached Results**: Conversions are cached - repeated access returns the same object
 - **Type Safe**: Full type annotations for IDE support
@@ -34,6 +34,7 @@ crs = UCRS(wkt_string)                   # WKT
 crs = UCRS(pyproj.CRS.from_epsg(4326))   # pyproj.CRS
 crs = UCRS(cartopy.crs.PlateCarree())    # cartopy CRS
 crs = UCRS(srs)                          # osgeo.osr.SpatialReference
+crs = UCRS.from_file("path/to/crs.wkt")  # WKT from file
 
 # Use as pyproj.CRS (UCRS inherits from it)
 crs.to_epsg()        # Returns 4326
@@ -92,6 +93,22 @@ web_mercator = UCRS(3857)
 # Since UCRS inherits from pyproj.CRS, use it directly
 transformer = Transformer.from_crs(wgs84, web_mercator)
 x, y = transformer.transform(40.7128, -74.0060)  # NYC coordinates
+```
+
+**Loading CRS from WKT files:**
+
+```python
+from pathlib import Path
+from ucrs import UCRS
+
+# Many GIS workflows store CRS definitions in .wkt or .prj files
+crs = UCRS.from_file("projection.prj")  # Shapefile projection file
+crs = UCRS.from_file(Path("data/crs.wkt"))  # Also accepts Path objects
+
+# Use immediately with any library
+print(f"EPSG: {crs.to_epsg()}")
+ax.set_projection(crs.cartopy)
+dataset.SetProjection(crs.osgeo.ExportToWkt())
 ```
 
 ## How It Works
