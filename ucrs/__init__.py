@@ -73,7 +73,7 @@ try:
 except ImportError:
     __version__ = "unknown"
 
-__all__ = ["UCRS", "__version__"]
+__all__ = ["CRSInput", "UCRS", "__version__"]
 
 # Type aliases
 if TYPE_CHECKING:
@@ -94,6 +94,9 @@ if TYPE_CHECKING:
     CartopyCRS: TypeAlias = ccrs.CRS
     CartopyProjection: TypeAlias = ccrs.Projection
     OSGeoSpatialReference: TypeAlias = SpatialReference
+else:
+    # Runtime version - no optional dependency imports
+    CRSInput: TypeAlias = pyproj.CRS | str | int | dict[str, str]
 
 
 class UCRS(pyproj.crs.CustomConstructorCRS):

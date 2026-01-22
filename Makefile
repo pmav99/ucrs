@@ -6,7 +6,7 @@ help:
 	@echo "  make test-cov  - Run tests with coverage report"
 
 test:
-	pytest
+	python -m pytest
 
 test-cov:
-	pytest --cov=ucrs --cov-report=term-missing --cov-report=html
+	python -m pytest --cov=ucrs --cov-report=term-missing --cov-report=html
