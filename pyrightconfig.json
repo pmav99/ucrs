@@ -7,6 +7,8 @@
     "geoviews",
     "holoviews",
     "hvplot",
+    "osgeo",
+    "osgeo.osr",
     "panel",
     "pyproj"
   ],

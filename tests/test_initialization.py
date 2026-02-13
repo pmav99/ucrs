@@ -210,73 +210,80 @@ class TestInternalState:
 class TestInitializationFromFile:
     """Test UCRS initialization from WKT files."""
 
-    def test_from_file_string_path(self, tmp_path: Path, wgs84_wkt: str) -> None:
+    def test_string_path(self, tmp_path: Path, wgs84_wkt: str) -> None:
         """Test initialization from file using string path."""
         wkt_file = tmp_path / "test_crs.wkt"
         wkt_file.write_text(wgs84_wkt, encoding="utf-8")
 
-        ucrs = UCRS.from_file(str(wkt_file))
+        ucrs = UCRS(str(wkt_file))
         assert isinstance(ucrs, pyproj.CRS)
         assert ucrs.to_epsg() == 4326
         assert ucrs.is_geographic
 
-    def test_from_file_path_object(self, tmp_path: Path, wgs84_wkt: str) -> None:
+    def test_path_object(self, tmp_path: Path, wgs84_wkt: str) -> None:
         """Test initialization from file using pathlib.Path object."""
         wkt_file = tmp_path / "test_crs.wkt"
         wkt_file.write_text(wgs84_wkt, encoding="utf-8")
 
-        ucrs = UCRS.from_file(wkt_file)
+        ucrs = UCRS(wkt_file)
         assert isinstance(ucrs, pyproj.CRS)
         assert ucrs.to_epsg() == 4326
         assert ucrs.is_geographic
 
-    def test_from_file_with_whitespace(self, tmp_path: Path, wgs84_wkt: str) -> None:
+    def test_with_whitespace(self, tmp_path: Path, wgs84_wkt: str) -> None:
         """Test that whitespace is properly stripped from file content."""
         wkt_file = tmp_path / "test_crs.wkt"
         wkt_file.write_text(f"\n\n  {wgs84_wkt}  \n\n", encoding="utf-8")
 
-        ucrs = UCRS.from_file(wkt_file)
+        ucrs = UCRS(wkt_file)
         assert ucrs.to_epsg() == 4326
 
-    def test_from_file_projected_crs(self, tmp_path: Path) -> None:
+    def test_projected_crs(self, tmp_path: Path) -> None:
         """Test initialization from file with projected CRS."""
         wkt = pyproj.CRS.from_epsg(3857).to_wkt()
         wkt_file = tmp_path / "projected.wkt"
         wkt_file.write_text(wkt, encoding="utf-8")
 
-        ucrs = UCRS.from_file(wkt_file)
+        ucrs = UCRS(wkt_file)
         assert ucrs.to_epsg() == 3857
         assert ucrs.is_projected
 
-    def test_from_file_nonexistent(self, tmp_path: Path) -> None:
-        """Test that FileNotFoundError is raised for nonexistent file."""
+    def test_nonexistent_path_object(self, tmp_path: Path) -> None:
+        """Test that FileNotFoundError is raised for nonexistent Path object."""
         nonexistent = tmp_path / "does_not_exist.wkt"
         with pytest.raises(FileNotFoundError):
-            UCRS.from_file(nonexistent)
+            UCRS(nonexistent)
 
-    def test_from_file_invalid_wkt(self, tmp_path: Path) -> None:
+    def test_nonexistent_string_path(self, tmp_path: Path) -> None:
+        """Test that nonexistent string path falls through to CRS parsing."""
+        nonexistent = str(tmp_path / "does_not_exist.wkt")
+        # String paths that don't exist fall through to pyproj, which fails
+        with pytest.raises(Exception):  # pyproj.CRSError or similar
+            UCRS(nonexistent)
+
+    def test_invalid_wkt(self, tmp_path: Path) -> None:
         """Test that invalid WKT content raises appropriate error."""
         invalid_file = tmp_path / "invalid.wkt"
         invalid_file.write_text("This is not valid WKT", encoding="utf-8")
 
         with pytest.raises(Exception):  # pyproj will raise CRSError or similar
-            UCRS.from_file(invalid_file)
+            UCRS(invalid_file)
 
-    def test_from_file_utf8_encoding(self, tmp_path: Path, wgs84_wkt: str) -> None:
+    def test_utf8_encoding(self, tmp_path: Path, wgs84_wkt: str) -> None:
         """Test that file is read with UTF-8 encoding."""
         wkt_file = tmp_path / "utf8_test.wkt"
         # Write with UTF-8 explicitly
         wkt_file.write_text(wgs84_wkt, encoding="utf-8")
 
-        ucrs = UCRS.from_file(wkt_file)
+        ucrs = UCRS(wkt_file)
         assert ucrs.to_epsg() == 4326
 
     @pytest.mark.parametrize("epsg_code", [4326, 3857, 32633, 2154])
-    def test_from_file_various_crs(self, tmp_path: Path, epsg_code: int) -> None:
-        """Test from_file with various CRS definitions."""
+    def test_various_crs(self, tmp_path: Path, epsg_code: int) -> None:
+        """Test initialization from file with various CRS definitions."""
         wkt = pyproj.CRS.from_epsg(epsg_code).to_wkt()
         wkt_file = tmp_path / f"crs_{epsg_code}.wkt"
         wkt_file.write_text(wkt, encoding="utf-8")
 
-        ucrs = UCRS.from_file(wkt_file)
+        ucrs = UCRS(wkt_file)
         assert ucrs.to_epsg() == epsg_code

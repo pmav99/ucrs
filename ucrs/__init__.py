@@ -1,4 +1,3 @@
-
 """Unified CRS - Seamless conversion between geospatial CRS representations.
 
 UCRS provides a unified interface for working with Coordinate Reference Systems (CRS)
@@ -21,8 +20,8 @@ Basic Usage
 >>> # Create from EPSG code
 >>> crs = UCRS(4326)
 >>>
->>> # Create from WKT file
->>> crs = UCRS.from_file("path/to/crs.wkt")
+>>> # Create from WKT file path
+>>> crs = UCRS("path/to/crs.wkt")
 >>>
 >>> # Access different representations
 >>> proj_crs = crs  # UCRS inherits from pyproj.CRS
@@ -55,14 +54,17 @@ ImportError messages when attempting to use unavailable conversions.
 
 from __future__ import annotations
 
+import errno
+
 from functools import cached_property
 from os import PathLike
 from pathlib import Path
 from typing import cast
 from typing import TypeAlias
 from typing import TYPE_CHECKING
+from typing import final
 
-import pyproj.crs
+from pyproj.crs.crs import CustomConstructorCRS
 
 try:
     from importlib.metadata import version, PackageNotFoundError
@@ -77,14 +79,16 @@ __all__ = ["CRSInput", "UCRS", "__version__"]
 
 # Type aliases
 if TYPE_CHECKING:
+    import pyproj
     import cartopy.crs as ccrs
-    from osgeo.osr import SpatialReference
+    from osgeo.osr import SpatialReference  # pyright: ignore[reportMissingImports,reportUnknownVariableType]
 
     CRSInput: TypeAlias = (
         pyproj.CRS
         | ccrs.CRS
         | ccrs.Projection
-        | SpatialReference
+        #| SpatialReference
+        | Path
         | str
         | int
         | dict[str, str]
@@ -93,13 +97,15 @@ if TYPE_CHECKING:
     # Type aliases for return types
     CartopyCRS: TypeAlias = ccrs.CRS
     CartopyProjection: TypeAlias = ccrs.Projection
-    OSGeoSpatialReference: TypeAlias = SpatialReference
 else:
     # Runtime version - no optional dependency imports
-    CRSInput: TypeAlias = pyproj.CRS | str | int | dict[str, str]
+    import pyproj
+
+    CRSInput: TypeAlias = pyproj.CRS | Path | str | int | dict[str, str]
 
 
-class UCRS(pyproj.crs.CustomConstructorCRS):
+@final
+class UCRS(CustomConstructorCRS):
     """Unified CRS for seamless conversion between pyproj, cartopy, and osgeo.
 
     UCRS is a wrapper class that inherits from pyproj.CRS, allowing it to be used
@@ -219,6 +225,17 @@ class UCRS(pyproj.crs.CustomConstructorCRS):
         """
         # Convert input to pyproj.CRS
         # Check types in order of expected usage frequency
+        if isinstance(obj, str):
+            try:
+                with open(obj, "r", encoding="utf-8") as fd:
+                    obj = fd.read().strip()
+            except OSError as e:
+                if e.errno not in (errno.ENOENT, errno.ENAMETOOLONG):
+                    raise
+        elif isinstance(obj, Path):
+            obj = cast(str, obj.read_text(encoding="utf-8")).strip()
+        else:
+            pass
 
         # Try to handle cartopy CRS/Projection (most common library-specific usage)
         try:
@@ -239,16 +256,16 @@ class UCRS(pyproj.crs.CustomConstructorCRS):
             else:
                 # Try to handle osgeo SpatialReference
                 try:
-                    import osgeo
-                    from osgeo.osr import SpatialReference
+                    import osgeo  # pyright: ignore[reportMissingImports]
+                    from osgeo.osr import SpatialReference  # pyright: ignore[reportMissingImports,reportUnknownVariableType]
                     if isinstance(obj, SpatialReference):
                         # Convert from osgeo to pyproj using WKT
                         # Use WKT2_2018 for GDAL 3+, WKT1 for older versions
                         wkt: str
-                        if osgeo.version_info.major < 3:
-                            wkt = cast(str, obj.ExportToWkt())
+                        if osgeo.version_info.major < 3:  # pyright: ignore[reportUnknownMemberType]
+                            wkt = cast(str, obj.ExportToWkt())  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
                         else:
-                            wkt = cast(str, obj.ExportToWkt(["FORMAT=WKT2_2018"]))
+                            wkt = cast(str, obj.ExportToWkt(["FORMAT=WKT2_2018"]))  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
                         self._pyproj_crs = pyproj.CRS.from_wkt(wkt)
                     else:
                         raise TypeError("Not a SpatialReference")
@@ -258,48 +275,7 @@ class UCRS(pyproj.crs.CustomConstructorCRS):
                     self._pyproj_crs = pyproj.CRS.from_user_input(obj)
 
         # Initialize parent CustomConstructorCRS with the pyproj CRS
-        super().__init__(self._pyproj_crs.to_json_dict())
-
-    @classmethod
-    def from_file(cls, filepath: str | PathLike[str]) -> UCRS:
-        """Create UCRS instance from a file containing WKT CRS definition.
-
-        Reads a text file containing a WKT (Well-Known Text) representation of a
-        Coordinate Reference System and creates a UCRS instance from it.
-
-        Parameters
-        ----------
-        filepath : str or os.PathLike[str]
-            Path to the file containing WKT CRS definition. Can be a string path,
-            a pathlib.Path object, or any path-like object.
-
-        Returns
-        -------
-        UCRS
-            A new UCRS instance created from the WKT in the file.
-
-        Notes
-        -----
-        - The file is expected to contain plain text WKT in UTF-8 encoding
-        - Whitespace (leading/trailing) is automatically stripped
-        - The WKT validation is performed by pyproj.CRS
-
-        Examples
-        --------
-        >>> # Create from file path string
-        >>> crs = UCRS.from_file("/path/to/crs.wkt")
-
-        >>> # Create from pathlib.Path
-        >>> from pathlib import Path
-        >>> crs = UCRS.from_file(Path("crs.wkt"))
-
-        >>> # The resulting UCRS can be used like any other
-        >>> crs.is_geographic
-        True
-        """
-        path = Path(filepath)
-        wkt_content = path.read_text(encoding="utf-8").strip()
-        return cls(wkt_content)
+        super().__init__(self._pyproj_crs.to_json_dict())  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
 
     @cached_property
     def cartopy(self) -> CartopyCRS | CartopyProjection:
@@ -343,14 +319,10 @@ class UCRS(pyproj.crs.CustomConstructorCRS):
             else:
                 return ccrs.CRS(self)
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to convert to cartopy CRS. This may occur if the CRS "
-                f"was not created with WKT2, PROJ JSON, or an EPSG code with "
-                f"area of use defined. Original error: {e}"
-            ) from e
+            raise RuntimeError(f"Failed to convert to cartopy CRS. Original error: {e}") from e
 
     @cached_property
-    def osgeo(self) -> OSGeoSpatialReference:
+    def osgeo(self) -> SpatialReference:  # pyright: ignore[reportUnknownParameterType]
         """Convert to osgeo SpatialReference representation (lazy, cached).
 
         Returns
@@ -371,8 +343,8 @@ class UCRS(pyproj.crs.CustomConstructorCRS):
         '4326'
         """
         try:
-            import osgeo
-            from osgeo.osr import SpatialReference
+            import osgeo  # pyright: ignore[reportMissingImports]
+            from osgeo.osr import SpatialReference  # pyright: ignore[reportMissingImports,reportUnknownVariableType]
         except ImportError as e:
             raise ImportError(
                 "osgeo (GDAL) is not installed. Install it with: pip install gdal"
@@ -380,20 +352,20 @@ class UCRS(pyproj.crs.CustomConstructorCRS):
 
         from pyproj.enums import WktVersion
 
-        osr_crs = SpatialReference()
+        osr_crs = SpatialReference()  # pyright: ignore[reportUnknownVariableType]
 
         # Use appropriate WKT version based on GDAL version
-        if osgeo.version_info.major < 3:
+        if osgeo.version_info.major < 3:  # pyright: ignore[reportUnknownMemberType]
             # GDAL 2.x - use WKT1_GDAL
             wkt = self.to_wkt(WktVersion.WKT1_GDAL)
         else:
             # GDAL 3+ - use WKT2
             wkt = self.to_wkt()
 
-        osr_crs.ImportFromWkt(wkt)
-        return osr_crs
+        osr_crs.ImportFromWkt(wkt)  # pyright: ignore[reportUnknownMemberType]
+        return osr_crs  # pyright: ignore[reportUnknownVariableType]
 
-    def summary(self) -> str:
+    def summary(self) -> dict[str, str]:
         attributes = [
            'is_bound',
            'is_compound',
@@ -406,4 +378,4 @@ class UCRS(pyproj.crs.CustomConstructorCRS):
            'is_vertical',
         ]
         data = {attr: getattr(self, attr) for attr in attributes}
-        print(data)
+        return data
