@@ -56,13 +56,18 @@ from __future__ import annotations
 
 import errno
 
-from functools import cached_property
-from os import PathLike
+from functools import cached_property, lru_cache
+from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
+from typing import Literal
+from typing import overload
 from typing import TypeAlias
 from typing import TYPE_CHECKING
 from typing import final
+
+import numpy as np
+from numpy.typing import ArrayLike, NDArray
 
 from pyproj.crs.crs import CustomConstructorCRS
 
@@ -75,13 +80,14 @@ try:
 except ImportError:
     __version__ = "unknown"
 
-__all__ = ["CRSInput", "UCRS", "__version__"]
+__all__ = ["CRSInput", "UCRS", "__version__", "transform", "transform_coords"]
 
 # Type aliases
 if TYPE_CHECKING:
     import pyproj
     import cartopy.crs as ccrs
     from osgeo.osr import SpatialReference  # pyright: ignore[reportMissingImports,reportUnknownVariableType]
+    from shapely.geometry.base import BaseGeometry
 
     CRSInput: TypeAlias = (
         pyproj.CRS
@@ -233,7 +239,7 @@ class UCRS(CustomConstructorCRS):
                 if e.errno not in (errno.ENOENT, errno.ENAMETOOLONG):
                     raise
         elif isinstance(obj, Path):
-            obj = cast(str, obj.read_text(encoding="utf-8")).strip()
+            obj = cast(str, obj.read_text(encoding="utf-8")).strip()  # pyright: ignore[reportUnknownMemberType]
         else:
             pass
 
@@ -379,3 +385,234 @@ class UCRS(CustomConstructorCRS):
         ]
         data = {attr: getattr(self, attr) for attr in attributes}
         return data
+
+
+# ============================================================================
+# Shared transformer cache
+# ============================================================================
+
+@lru_cache(maxsize=256)
+def _get_transformer(
+    source_crs: CRSInput,
+    target_crs: CRSInput,
+    always_xy: bool,
+) -> pyproj.Transformer:
+    src = source_crs if isinstance(source_crs, UCRS) else UCRS(source_crs)
+    tgt = target_crs if isinstance(target_crs, UCRS) else UCRS(target_crs)
+    return pyproj.Transformer.from_crs(src, tgt, always_xy=always_xy)
+
+
+# ============================================================================
+# Coordinate transformation
+# ============================================================================
+
+# Scalar point type: (x, y) or (x, y, z) where each element is a number.
+ScalarPoint2D: TypeAlias = tuple[float, float]
+ScalarPoint3D: TypeAlias = tuple[float, float, float]
+ScalarPoint: TypeAlias = ScalarPoint2D | ScalarPoint3D
+
+@overload
+def transform_coords(
+    coords: ArrayLike | tuple[ArrayLike, ...],
+    source_crs: CRSInput,
+    target_crs: CRSInput,
+    *,
+    always_xy: bool = ...,
+    output: Literal["array"],
+) -> NDArray[np.float64]: ...
+
+@overload
+def transform_coords(
+    coords: ArrayLike | tuple[ArrayLike, ...],
+    source_crs: CRSInput,
+    target_crs: CRSInput,
+    *,
+    always_xy: bool = ...,
+    output: Literal["tuple"],
+) -> tuple[NDArray[np.float64], ...] | ScalarPoint: ...
+
+@overload
+def transform_coords(
+    coords: ArrayLike | tuple[ArrayLike, ...],
+    source_crs: CRSInput,
+    target_crs: CRSInput,
+    *,
+    always_xy: bool = ...,
+    output: Literal["auto"] = ...,
+) -> NDArray[np.float64] | tuple[NDArray[np.float64], ...] | ScalarPoint: ...
+
+def transform_coords(
+    coords: ArrayLike | tuple[ArrayLike, ...],
+    source_crs: CRSInput,
+    target_crs: CRSInput,
+    *,
+    always_xy: bool = True,
+    output: Literal["auto", "array", "tuple"] = "auto",
+) -> NDArray[np.float64] | tuple[NDArray[np.float64], ...] | ScalarPoint:
+    """Transform coordinates between CRS.
+
+    Parameters
+    ----------
+    coords : ArrayLike | tuple[ArrayLike, ...] | tuple[float, float] | tuple[float, float, float]
+        One of:
+        - A single scalar point ``(x, y)`` or ``(x, y, z)`` (tuple of numbers).
+        - A single (N, 2) or (N, 3) array-like.
+        - A tuple of 2–3 1-D array-likes ``(x, y)`` / ``(x, y, z)``.
+    source_crs : CRSInput
+        Source coordinate reference system (any input accepted by UCRS).
+    target_crs : CRSInput
+        Target coordinate reference system (any input accepted by UCRS).
+    always_xy : bool, optional
+        If True (default), coordinate order is x/y (lon/lat) regardless
+        of CRS axis order.
+    output : ``"auto"`` | ``"array"`` | ``"tuple"``, optional
+        Controls the return type:
+        - ``"auto"`` (default): match the input format.
+        - ``"array"``: always return a single (N, 2|3) ndarray.
+        - ``"tuple"``: always return a tuple of 1-D ndarrays.
+
+    Returns
+    -------
+    np.ndarray | tuple[np.ndarray, ...] | tuple[float, ...]
+        Transformed coordinates in the requested format.
+        Scalar input returns a tuple of plain floats by default.
+    """
+    transformer = _get_transformer(source_crs, target_crs, always_xy)
+
+    # Determine whether the caller passed a scalar point, a tuple-of-arrays,
+    # or a single array.
+    is_scalar_input = False
+    is_tuple_input = False
+
+    if isinstance(coords, tuple) and len(coords) in (2, 3) and all(isinstance(c, (int, float)) for c in coords):
+        # Scalar point: (x, y) or (x, y, z) where each element is a number.
+        is_scalar_input = True
+        x = np.array([coords[0]], dtype=np.float64)
+        y = np.array([coords[1]], dtype=np.float64)
+        z = np.array([coords[2]], dtype=np.float64) if len(coords) == 3 else None
+    elif isinstance(coords, tuple):
+        is_tuple_input = True
+        arrays = [np.asarray(a, dtype=np.float64) for a in coords]
+        if len(arrays) == 2:
+            x, y = arrays
+            z = None
+        elif len(arrays) == 3:
+            x, y, z = arrays
+        else:
+            raise ValueError(
+                f"Tuple input must have 2 or 3 elements, got {len(arrays)}"
+            )
+        sizes = {a.shape[0] for a in arrays}
+        if len(sizes) != 1:
+            raise ValueError(
+                f"All arrays in tuple must have the same length, got {[a.shape[0] for a in arrays]}"
+            )
+    else:
+        arr = np.asarray(coords, dtype=np.float64)
+        if arr.ndim != 2 or arr.shape[1] not in (2, 3):
+            raise ValueError(
+                f"Array input must have shape (N, 2) or (N, 3), got {arr.shape}"
+            )
+        x = arr[:, 0]
+        y = arr[:, 1]
+        z = arr[:, 2] if arr.shape[1] == 3 else None
+
+    # Perform the transformation.
+    if z is not None:
+        tx, ty, tz = transformer.transform(x, y, z)
+    else:
+        tx, ty = transformer.transform(x, y)
+        tz = None
+
+    tx = np.asarray(tx, dtype=np.float64)
+    ty = np.asarray(ty, dtype=np.float64)
+    if tz is not None:
+        tz = np.asarray(tz, dtype=np.float64)
+
+    # Build the result in the requested format.
+    if is_scalar_input and output in ("auto", "tuple"):
+        if tz is None:
+            return (float(tx[0]), float(ty[0]))
+        return (float(tx[0]), float(ty[0]), float(tz[0]))
+
+    if output == "auto":
+        output = "tuple" if is_tuple_input else "array"
+
+    if output == "tuple":
+        if tz is None:
+            return (tx, ty)
+        return (tx, ty, tz)
+    else:  # "array"
+        if tz is None:
+            return np.column_stack([tx, ty])
+        return np.column_stack([tx, ty, tz])
+
+
+# ============================================================================
+# Geometry transformation
+# ============================================================================
+
+@overload
+def transform(
+    geom: BaseGeometry,
+    source_crs: CRSInput,
+    target_crs: CRSInput,
+    *,
+    always_xy: bool = ...,
+) -> BaseGeometry: ...
+
+@overload
+def transform(
+    geom: Sequence[BaseGeometry],
+    source_crs: CRSInput,
+    target_crs: CRSInput,
+    *,
+    always_xy: bool = ...,
+) -> list[BaseGeometry]: ...
+
+def transform(
+    geom: BaseGeometry | Sequence[BaseGeometry],
+    source_crs: CRSInput,
+    target_crs: CRSInput,
+    *,
+    always_xy: bool = True,
+) -> BaseGeometry | list[BaseGeometry]:
+    """Transform shapely geometries between CRS.
+
+    Parameters
+    ----------
+    geom : BaseGeometry | Sequence[BaseGeometry]
+        A single shapely geometry or a sequence of geometries.
+    source_crs : CRSInput
+        Source coordinate reference system (any input accepted by UCRS).
+    target_crs : CRSInput
+        Target coordinate reference system (any input accepted by UCRS).
+    always_xy : bool, optional
+        If True (default), coordinate order is x/y (lon/lat) regardless
+        of CRS axis order.
+
+    Returns
+    -------
+    BaseGeometry | list[BaseGeometry]
+        Transformed geometry/geometries. Single input → single out,
+        sequence input → list out.
+    """
+    try:
+        from shapely import transform as shp_transform
+        from shapely.geometry.base import BaseGeometry
+    except ImportError as e:
+        raise ImportError(
+            "shapely is not installed. Install it with: pip install shapely"
+        ) from e
+
+    is_single = isinstance(geom, BaseGeometry)
+    geoms: list[BaseGeometry] = [geom] if is_single else list(geom)
+
+    results: list[BaseGeometry] = [
+        shp_transform(g, lambda coords: transform_coords(coords, source_crs, target_crs, always_xy=always_xy, output="array"))
+        for g in geoms
+    ]
+
+    if is_single:
+        return results[0]
+    return results
