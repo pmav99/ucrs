@@ -23,7 +23,7 @@ class TestSinglePoint:
     def test_point_4326_to_3857(self) -> None:
         """Transform a Point from 4326→3857, verify Web Mercator coords."""
         pt = Point(10.0, 20.0)
-        result = transform(pt, WGS84, WEB_MERCATOR)
+        result = transform(WGS84, WEB_MERCATOR, pt)
         assert isinstance(result, Point)
         # 10° longitude ≈ 1_113_194.9 m in Web Mercator
         np.testing.assert_allclose(result.x, 1_113_194.9, rtol=1e-3)
@@ -38,7 +38,7 @@ class TestSinglePolygon:
     def test_polygon_transformed(self) -> None:
         """Transform a simple polygon from 4326→3857."""
         poly = Polygon([(0, 0), (1, 0), (1, 1), (0, 1)])
-        result = transform(poly, WGS84, WEB_MERCATOR)
+        result = transform(WGS84, WEB_MERCATOR, poly)
         assert isinstance(result, Polygon)
         # All vertices should now be in Web Mercator meters, not degrees
         coords = np.array(result.exterior.coords)
@@ -54,7 +54,7 @@ class TestSinglePolygon:
 class TestSingleInSingleOut:
     def test_returns_geometry_not_list(self) -> None:
         pt = Point(0, 0)
-        result = transform(pt, WGS84, WEB_MERCATOR)
+        result = transform(WGS84, WEB_MERCATOR, pt)
         assert not isinstance(result, list)
         assert isinstance(result, Point)
 
@@ -66,7 +66,7 @@ class TestSingleInSingleOut:
 class TestListInListOut:
     def test_list_of_points(self) -> None:
         pts = [Point(0, 0), Point(10, 20)]
-        result = transform(pts, WGS84, WEB_MERCATOR)
+        result = transform(WGS84, WEB_MERCATOR, pts)
         assert isinstance(result, list)
         assert len(result) == 2
         assert all(isinstance(g, Point) for g in result)
@@ -83,7 +83,7 @@ class TestListInListOut:
 class TestIdentityTransform:
     def test_same_crs_unchanged(self) -> None:
         pt = Point(10.0, 20.0)
-        result = transform(pt, WGS84, WGS84)
+        result = transform(WGS84, WGS84, pt)
         assert isinstance(result, Point)
         np.testing.assert_allclose(result.x, pt.x, atol=1e-10)
         np.testing.assert_allclose(result.y, pt.y, atol=1e-10)
@@ -104,6 +104,6 @@ class TestCRSInputVariants:
     )
     def test_crs_input_types(self, source, target) -> None:  # type: ignore[no-untyped-def]
         pt = Point(10.0, 20.0)
-        result = transform(pt, source, target)
+        result = transform(source, target, pt)
         assert isinstance(result, Point)
         np.testing.assert_allclose(result.x, 1_113_194.9, rtol=1e-3)

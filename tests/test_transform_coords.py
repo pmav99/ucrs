@@ -37,7 +37,7 @@ WEB_MERCATOR = 3857
 
 class TestArrayN2:
     def test_shape_and_ballpark(self) -> None:
-        result = transform_coords(LONLAT, WGS84, WEB_MERCATOR)
+        result = transform_coords(WGS84, WEB_MERCATOR, LONLAT)
         assert isinstance(result, np.ndarray)
         assert result.shape == (3, 2)
         # X values should be in the millions-of-meters range for non-zero inputs
@@ -54,7 +54,7 @@ class TestArrayN3ZPassthrough:
         coords = np.column_stack([LONLAT, z_vals])
         assert coords.shape == (3, 3)
 
-        result = transform_coords(coords, WGS84, WEB_MERCATOR)
+        result = transform_coords(WGS84, WEB_MERCATOR, coords)
         assert isinstance(result, np.ndarray)
         assert result.shape == (3, 3)
         # Z should pass through unchanged (neither CRS has a vertical datum)
@@ -78,7 +78,7 @@ class TestArrayN3Z3DCRS:
         z_vals = [100.0, 200.0, 300.0]
         coords = np.column_stack([LONLAT, z_vals])
 
-        result = transform_coords(coords, WGS84_3D, WGS84)
+        result = transform_coords(WGS84_3D, WGS84, coords)
         assert isinstance(result, np.ndarray)
         assert result.shape == (3, 3)
         # lon/lat should be essentially unchanged (same horizontal datum)
@@ -94,7 +94,7 @@ class TestTuple2Arrays:
         lons = LONLAT[:, 0]
         lats = LONLAT[:, 1]
 
-        result = transform_coords((lons, lats), WGS84, WEB_MERCATOR)
+        result = transform_coords(WGS84, WEB_MERCATOR, (lons, lats))
         assert isinstance(result, tuple)
         assert len(result) == 2
         assert all(isinstance(a, np.ndarray) for a in result)
@@ -112,7 +112,7 @@ class TestTuple3Arrays:
         lats = LONLAT[:, 1]
         zs = np.array([100.0, 200.0, 300.0])
 
-        result = transform_coords((lons, lats, zs), WGS84, WEB_MERCATOR)
+        result = transform_coords(WGS84, WEB_MERCATOR, (lons, lats, zs))
         assert isinstance(result, tuple)
         assert len(result) == 3
         assert all(isinstance(a, np.ndarray) for a in result)
@@ -131,7 +131,7 @@ class TestOutputArray:
         lats = LONLAT[:, 1]
 
         result = transform_coords(
-            (lons, lats), WGS84, WEB_MERCATOR, output="array"
+            WGS84, WEB_MERCATOR, (lons, lats), output="array"
         )
         assert isinstance(result, np.ndarray)
         assert result.shape == (3, 2)
@@ -144,7 +144,7 @@ class TestOutputArray:
 class TestOutputTuple:
     def test_array_input_tuple_output(self) -> None:
         result = transform_coords(
-            LONLAT, WGS84, WEB_MERCATOR, output="tuple"
+            WGS84, WEB_MERCATOR, LONLAT, output="tuple"
         )
         assert isinstance(result, tuple)
         assert len(result) == 2
@@ -169,7 +169,7 @@ class TestOutputAuto:
     )
     def test_auto_matches_input(self, coords, expected_type) -> None:  # type: ignore[no-untyped-def]
         result = transform_coords(
-            coords, WGS84, WEB_MERCATOR, output="auto"
+            WGS84, WEB_MERCATOR, coords, output="auto"
         )
         assert isinstance(result, expected_type)
 
@@ -180,7 +180,7 @@ class TestOutputAuto:
 
 class TestIdentityTransform:
     def test_same_crs_unchanged(self) -> None:
-        result = transform_coords(LONLAT, WGS84, WGS84)
+        result = transform_coords(WGS84, WGS84, LONLAT)
         assert isinstance(result, np.ndarray)
         np.testing.assert_allclose(result, LONLAT, atol=1e-10)
 
@@ -192,14 +192,14 @@ class TestIdentityTransform:
 class TestListInput:
     def test_plain_list_input(self) -> None:
         coords_list = [[0.0, 0.0], [10.0, 20.0]]
-        result = transform_coords(coords_list, WGS84, WEB_MERCATOR)
+        result = transform_coords(WGS84, WEB_MERCATOR, coords_list)
         assert isinstance(result, np.ndarray)
         assert result.shape == (2, 2)
 
     def test_tuple_of_lists(self) -> None:
         lons = [0.0, 10.0]
         lats = [0.0, 20.0]
-        result = transform_coords((lons, lats), WGS84, WEB_MERCATOR)
+        result = transform_coords(WGS84, WEB_MERCATOR, (lons, lats))
         assert isinstance(result, tuple)
         assert all(isinstance(a, np.ndarray) for a in result)
 
@@ -220,7 +220,7 @@ class TestInvalidShapes:
     )
     def test_invalid_array_shape(self, coords: np.ndarray) -> None:
         with pytest.raises(ValueError, match="Array input must have shape"):
-            transform_coords(coords, WGS84, WEB_MERCATOR)
+            transform_coords(WGS84, WEB_MERCATOR, coords)
 
     @pytest.mark.parametrize(
         "coords",
@@ -231,11 +231,11 @@ class TestInvalidShapes:
     )
     def test_invalid_tuple_length(self, coords: tuple[list[float], ...]) -> None:
         with pytest.raises(ValueError, match="Tuple input must have 2 or 3"):
-            transform_coords(coords, WGS84, WEB_MERCATOR)
+            transform_coords(WGS84, WEB_MERCATOR, coords)
 
     def test_mismatched_array_lengths(self) -> None:
         with pytest.raises(ValueError, match="same length"):
-            transform_coords(([1, 2, 3, 4], [1, 2, 3]), WGS84, WEB_MERCATOR)
+            transform_coords(WGS84, WEB_MERCATOR, ([1, 2, 3, 4], [1, 2, 3]))
 
 
 # ============================================================================
@@ -252,7 +252,7 @@ class TestCRSInputVariants:
         ],
     )
     def test_crs_input_types(self, source, target) -> None:  # type: ignore[no-untyped-def]
-        result = transform_coords(LONLAT, source, target)
+        result = transform_coords(source, target, LONLAT)
         assert isinstance(result, np.ndarray)
         np.testing.assert_allclose(result, EXPECTED_XY_3857, rtol=1e-3)
 
@@ -265,7 +265,7 @@ class TestScalarInput:
     """Test that plain (x, y) and (x, y, z) float tuples are accepted."""
 
     def test_scalar_2d_returns_tuple_of_floats(self) -> None:
-        result = transform_coords((10.0, 20.0), WGS84, WEB_MERCATOR)
+        result = transform_coords(WGS84, WEB_MERCATOR, (10.0, 20.0))
         assert isinstance(result, tuple)
         assert len(result) == 2
         assert isinstance(result[0], float)
@@ -274,7 +274,7 @@ class TestScalarInput:
         np.testing.assert_allclose(result[1], EXPECTED_XY_3857[1, 1], rtol=1e-3)
 
     def test_scalar_3d_returns_tuple_of_floats(self) -> None:
-        result = transform_coords((10.0, 20.0, 500.0), WGS84, WEB_MERCATOR)
+        result = transform_coords(WGS84, WEB_MERCATOR, (10.0, 20.0, 500.0))
         assert isinstance(result, tuple)
         assert len(result) == 3
         assert all(isinstance(v, float) for v in result)
@@ -284,35 +284,35 @@ class TestScalarInput:
 
     def test_scalar_2d_ints(self) -> None:
         """Integer scalars should also work."""
-        result = transform_coords((10, 20), WGS84, WEB_MERCATOR)
+        result = transform_coords(WGS84, WEB_MERCATOR, (10, 20))
         assert isinstance(result, tuple)
         assert len(result) == 2
         assert isinstance(result[0], float)
         assert isinstance(result[1], float)
 
     def test_scalar_identity(self) -> None:
-        result = transform_coords((10.0, 20.0), WGS84, WGS84)
+        result = transform_coords(WGS84, WGS84, (10.0, 20.0))
         assert isinstance(result, tuple)
         assert len(result) == 2
         np.testing.assert_allclose(result, (10.0, 20.0), atol=1e-10)
 
     def test_scalar_output_array(self) -> None:
         """output='array' with scalar input returns a (1, 2) array."""
-        result = transform_coords((10.0, 20.0), WGS84, WEB_MERCATOR, output="array")
+        result = transform_coords(WGS84, WEB_MERCATOR, (10.0, 20.0), output="array")
         assert isinstance(result, np.ndarray)
         assert result.shape == (1, 2)
 
     def test_scalar_output_tuple(self) -> None:
         """output='tuple' with scalar input returns tuple of floats."""
-        result = transform_coords((10.0, 20.0), WGS84, WEB_MERCATOR, output="tuple")
+        result = transform_coords(WGS84, WEB_MERCATOR, (10.0, 20.0), output="tuple")
         assert isinstance(result, tuple)
         assert len(result) == 2
         assert isinstance(result[0], float)
 
     def test_scalar_vs_array_same_values(self) -> None:
         """Scalar and array paths should produce identical results."""
-        scalar_result = transform_coords((10.0, 20.0), WGS84, WEB_MERCATOR)
-        array_result = transform_coords(np.array([[10.0, 20.0]]), WGS84, WEB_MERCATOR)
+        scalar_result = transform_coords(WGS84, WEB_MERCATOR, (10.0, 20.0))
+        array_result = transform_coords(WGS84, WEB_MERCATOR, np.array([[10.0, 20.0]]))
         assert isinstance(scalar_result, tuple)
         assert isinstance(array_result, np.ndarray)
         np.testing.assert_allclose(scalar_result[0], array_result[0, 0])

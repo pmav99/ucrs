@@ -413,9 +413,9 @@ ScalarPoint: TypeAlias = ScalarPoint2D | ScalarPoint3D
 
 @overload
 def transform_coords(
-    coords: ArrayLike | tuple[ArrayLike, ...],
     source_crs: CRSInput,
     target_crs: CRSInput,
+    coords: ArrayLike | tuple[ArrayLike, ...],
     *,
     always_xy: bool = ...,
     output: Literal["array"],
@@ -423,9 +423,9 @@ def transform_coords(
 
 @overload
 def transform_coords(
-    coords: ArrayLike | tuple[ArrayLike, ...],
     source_crs: CRSInput,
     target_crs: CRSInput,
+    coords: ArrayLike | tuple[ArrayLike, ...],
     *,
     always_xy: bool = ...,
     output: Literal["tuple"],
@@ -433,18 +433,18 @@ def transform_coords(
 
 @overload
 def transform_coords(
-    coords: ArrayLike | tuple[ArrayLike, ...],
     source_crs: CRSInput,
     target_crs: CRSInput,
+    coords: ArrayLike | tuple[ArrayLike, ...],
     *,
     always_xy: bool = ...,
     output: Literal["auto"] = ...,
 ) -> NDArray[np.float64] | tuple[NDArray[np.float64], ...] | ScalarPoint: ...
 
 def transform_coords(
-    coords: ArrayLike | tuple[ArrayLike, ...],
     source_crs: CRSInput,
     target_crs: CRSInput,
+    coords: ArrayLike | tuple[ArrayLike, ...],
     *,
     always_xy: bool = True,
     output: Literal["auto", "array", "tuple"] = "auto",
@@ -453,15 +453,15 @@ def transform_coords(
 
     Parameters
     ----------
+    source_crs : CRSInput
+        Source coordinate reference system (any input accepted by UCRS).
+    target_crs : CRSInput
+        Target coordinate reference system (any input accepted by UCRS).
     coords : ArrayLike | tuple[ArrayLike, ...] | tuple[float, float] | tuple[float, float, float]
         One of:
         - A single scalar point ``(x, y)`` or ``(x, y, z)`` (tuple of numbers).
         - A single (N, 2) or (N, 3) array-like.
         - A tuple of 2–3 1-D array-likes ``(x, y)`` / ``(x, y, z)``.
-    source_crs : CRSInput
-        Source coordinate reference system (any input accepted by UCRS).
-    target_crs : CRSInput
-        Target coordinate reference system (any input accepted by UCRS).
     always_xy : bool, optional
         If True (default), coordinate order is x/y (lon/lat) regardless
         of CRS axis order.
@@ -554,26 +554,26 @@ def transform_coords(
 
 @overload
 def transform(
-    geom: BaseGeometry,
     source_crs: CRSInput,
     target_crs: CRSInput,
+    geom: BaseGeometry,
     *,
     always_xy: bool = ...,
 ) -> BaseGeometry: ...
 
 @overload
 def transform(
-    geom: Sequence[BaseGeometry],
     source_crs: CRSInput,
     target_crs: CRSInput,
+    geom: Sequence[BaseGeometry],
     *,
     always_xy: bool = ...,
 ) -> list[BaseGeometry]: ...
 
 def transform(
-    geom: BaseGeometry | Sequence[BaseGeometry],
     source_crs: CRSInput,
     target_crs: CRSInput,
+    geom: BaseGeometry | Sequence[BaseGeometry],
     *,
     always_xy: bool = True,
 ) -> BaseGeometry | list[BaseGeometry]:
@@ -581,12 +581,12 @@ def transform(
 
     Parameters
     ----------
-    geom : BaseGeometry | Sequence[BaseGeometry]
-        A single shapely geometry or a sequence of geometries.
     source_crs : CRSInput
         Source coordinate reference system (any input accepted by UCRS).
     target_crs : CRSInput
         Target coordinate reference system (any input accepted by UCRS).
+    geom : BaseGeometry | Sequence[BaseGeometry]
+        A single shapely geometry or a sequence of geometries.
     always_xy : bool, optional
         If True (default), coordinate order is x/y (lon/lat) regardless
         of CRS axis order.
@@ -609,7 +609,7 @@ def transform(
     geoms: list[BaseGeometry] = [geom] if is_single else list(geom)
 
     results: list[BaseGeometry] = [
-        shp_transform(g, lambda coords: transform_coords(coords, source_crs, target_crs, always_xy=always_xy, output="array"))
+        shp_transform(g, lambda coords: transform_coords(source_crs, target_crs, coords, always_xy=always_xy, output="array"))
         for g in geoms
     ]
 
